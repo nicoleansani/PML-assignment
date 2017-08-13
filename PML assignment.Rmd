@@ -1,0 +1,238 @@
+---
+title: "PML assignment"
+author: "n ansani"
+date: "August 13, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+##Practical Machine Learning Assignment
+#Load libraries
+``library(caret)
+``library(randomForest)
+``library(rpart)
+``library(rpart.plot)
+``install.packages('rpart.plot')
+``install.packages('ROCR')
+``library(cluster)
+``library(parallel)
+``libaray(doSNOW)
+``install.packages('doSNOW')
+
+##download data
+#first step is to download training and test sets
+
+``train <- read.csv("pml-training (1).csv", na.strings=c("NA", "#DIV/0!", ""))
+``test <- read.csv("pml-testing (2).csv", na.strings=c("NA", "#DIV/0!", ""))
+``dim(train)
+[1] 19622   160
+``dim(test)
+[1]  20 160
+
+##The training data set has 19,622 observations with 160 variable
+##The testing data set has 20 observations with 160 variable
+
+##The outcome to predict is "classe" variable in the training dataset
+
+##Next step is to clean the data
+##Clean data by removing columns with missing values
+``train <- train[, colSums(is.na(train)) ==0]
+``test <- test[, colSums(is.na(test)) ==0]
+
+##Next Reomve columns not needed for model fitting
+##variables removed are: user_name, raw_teimstamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, and num_window)
+``trainClean <- train[,-c(1:7)]
+``testClean <- test[, -c(1:7)]
+``dim(trainClean)
+[1] 19622    53
+``dim(testClean)
+[1] 20 53
+## the cleaned training set now has 19.622 observations with 53 variables and the cleaned test set has 53 variables with 20 observations
+
+##Now divide training data into training and validations sets (70/30)
+``set.seed(12321)
+``inTrain <- createDataPartition(trainClean$classe, p=0.70, list=FALSE)
+``trainData <- trainClean[inTrain, ]
+``testData <- trainClean[-inTrain, ]
+``dim(trainData)
+[1] 13737    53
+``dim(testData)
+[1] 5885   53
+## trained data now has 13,737 observations and 53 variables and the test data has 5,885 observations
+
+##Model fitting must next be done
+##Random Forest will be used to fit a predictive model for the training set
+#random forest used becuase it can perform robust selection of predictors
+# apply 10-fold cross validation to the algorithm
+
+``controlRf <- trainControl(method="cv", number=10)
+``modelRf <- train(classe ~ ., data=trainData, method="rf", trControl=controlRf)``
+``modelRf
+---
+Random Forest 
+
+13737 samples
+   52 predictor
+    5 classes: 'A', 'B', 'C', 'D', 'E' 
+
+No pre-processing
+Resampling: Cross-Validated (10 fold) 
+Summary of sample sizes: 12364, 12362, 12364, 12364, 12362, 12364, ... 
+Resampling results across tuning parameters:
+
+  mtry  Accuracy   Kappa    
+   2    0.9917747  0.9895943
+  27    0.9914838  0.9892265
+  52    0.9861692  0.9825038
+
+Accuracy was used to select the optimal model using  the largest value.
+The final value used for the model was mtry = 2.
+---
+
+##Estimate the performance of the model on the validation set
+``predictRf <- predict(modelRf, testData)
+``confusionMatrix(testData$classe, predictRf)
+---
+Confusion Matrix and Statistics
+
+          Reference
+Prediction    A    B    C    D    E
+         A 1674    0    0    0    0
+         B    7 1130    2    0    0
+         C    0    7 1017    2    0
+         D    0    0   12  951    1
+         E    0    0    0    3 1079
+
+Overall Statistics
+                                         
+               Accuracy : 0.9942         
+                 95% CI : (0.9919, 0.996)
+    No Information Rate : 0.2856         
+    P-Value [Acc > NIR] : < 2.2e-16      
+                                         
+                  Kappa : 0.9927         
+ Mcnemar's Test P-Value : NA             
+
+Statistics by Class:
+
+                     Class: A Class: B Class: C Class: D Class: E
+Sensitivity            0.9958   0.9938   0.9864   0.9948   0.9991
+Specificity            1.0000   0.9981   0.9981   0.9974   0.9994
+Pos Pred Value         1.0000   0.9921   0.9912   0.9865   0.9972
+Neg Pred Value         0.9983   0.9985   0.9971   0.9990   0.9998
+Prevalence             0.2856   0.1932   0.1752   0.1624   0.1835
+Detection Rate         0.2845   0.1920   0.1728   0.1616   0.1833
+Detection Prevalence   0.2845   0.1935   0.1743   0.1638   0.1839
+Balanced Accuracy      0.9979   0.9960   0.9923   0.9961   0.9992
+---
+
+##next step assess the accuracy
+
+``accuracy <- postResample(predictRf, testData$classe)
+``accuracy
+ Accuracy     Kappa 
+0.9942226 0.9926911 
+
+
+``oose <- 1 - as.numeric(confusionMatrix(testData$classe, predictRf)$overall[1])
+
+``oose
+[1] 0.0057774
+##the estimated accuracy is 99.42% and estimated out-of-sample error is 0.58%
+
+##predict for test data
+# apply model to original 20 test records
+``results <- predict(modelRf, testClean)
+``results
+ [1] B A B A A E D B A A B C B A E E A B B B
+Levels: A B C D E
+
+
+##submission - generate required text files
+
+``if(!file.exists("./results")) {
++ dir.create("./results")
++ }
+
+``pml_write_files = function(x){
++   n = length(x)
++   for(i in 1:n){
++     filename = paste0("./results/problem_id_",i,".txt")
++     write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
++   }
++ }
+
+``pml_write_files(results)
+``results
+ [1] B A B A A E D B A A B C B A E E A B B B
+Levels: A B C D E
+
+##APPENDIX
+
+##decision tress
+``tree <- rpart(classe ~ ., data=trainData, method="class")
+
+``tree
+n= 13737 
+
+node), split, n, loss, yval, (yprob)
+      * denotes terminal node
+
+    1) root 13737 9831 A (0.28 0.19 0.17 0.16 0.18)  
+      2) roll_belt< 129.5 12488 8632 A (0.31 0.21 0.19 0.18 0.11)  
+        4) pitch_forearm< -34.15 1084    6 A (0.99 0.0055 0 0 0) *
+        5) pitch_forearm>=-34.15 11404 8626 A (0.24 0.23 0.21 0.2 0.12)  
+         10) magnet_dumbbell_y< 438.5 9664 6949 A (0.28 0.18 0.24 0.19 0.1)  
+           20) roll_forearm< 124.5 6041 3603 A (0.4 0.18 0.18 0.17 0.057)  
+             40) magnet_dumbbell_z< -27.5 2080  709 A (0.66 0.22 0.012 0.08 0.031)  
+               80) roll_forearm>=-136.5 1730  394 A (0.77 0.18 0.013 0.031 0.0058) *
+               81) roll_forearm< -136.5 350  205 B (0.1 0.41 0.0086 0.32 0.16) *
+             41) magnet_dumbbell_z>=-27.5 3961 2871 C (0.27 0.17 0.28 0.22 0.071)  
+               82) yaw_belt>=168.5 534   78 A (0.85 0.073 0.0019 0.069 0.0019) *
+               83) yaw_belt< 168.5 3427 2338 C (0.18 0.18 0.32 0.24 0.082)  
+                166) accel_dumbbell_y>=-40.5 2976 2169 D (0.2 0.2 0.23 0.27 0.093)  
+                  332) pitch_belt< -42.85 357   60 B (0.017 0.83 0.1 0.031 0.02) *
+                  333) pitch_belt>=-42.85 2619 1823 D (0.23 0.12 0.25 0.3 0.1)  
+                    666) roll_belt>=125.5 577  211 C (0.34 0.019 0.63 0.01 0)  
+                     1332) magnet_belt_z< -322.5 161    7 A (0.96 0 0.043 0 0) *
+                     1333) magnet_belt_z>=-322.5 416   57 C (0.096 0.026 0.86 0.014 0) *
+                    667) roll_belt< 125.5 2042 1252 D (0.2 0.14 0.14 0.39 0.13)  
+                     1334) pitch_belt>=1.04 1325 1007 A (0.24 0.21 0.16 0.22 0.18)  
+                       2668) accel_dumbbell_z< 31.5 892  588 A (0.34 0.14 0.23 0.26 0.035)  
+                         5336) yaw_forearm>=-94.4 650  346 A (0.47 0.18 0.24 0.072 0.038)  
+                          10672) magnet_forearm_z>=-149.5 426  129 A (0.7 0.14 0.031 0.094 0.035) *
+                          10673) magnet_forearm_z< -149.5 224   81 C (0.031 0.25 0.64 0.031 0.045) *
+                         5337) yaw_forearm< -94.4 242   59 D (0 0.025 0.19 0.76 0.025) *
+                       2669) accel_dumbbell_z>=31.5 433  224 E (0.032 0.35 0.0069 0.13 0.48) *
+                     1335) pitch_belt< 1.04 717  213 D (0.13 0.025 0.1 0.7 0.042) *
+                167) accel_dumbbell_y< -40.5 451   44 C (0.0044 0.042 0.9 0.044 0.0067) *
+           21) roll_forearm>=124.5 3623 2415 C (0.076 0.18 0.33 0.23 0.18)  
+             42) magnet_dumbbell_y< 290.5 2110 1063 C (0.093 0.13 0.5 0.14 0.14)  
+               84) magnet_dumbbell_z>=284.5 318  162 A (0.49 0.14 0.041 0.091 0.24) *
+               85) magnet_dumbbell_z< 284.5 1792  758 C (0.022 0.13 0.58 0.15 0.12) *
+             43) magnet_dumbbell_y>=290.5 1513  979 D (0.054 0.24 0.11 0.35 0.25)  
+               86) accel_forearm_x>=-90.5 931  605 E (0.05 0.31 0.15 0.14 0.35)  
+                172) magnet_arm_y>=188.5 384  174 B (0.0078 0.55 0.21 0.11 0.12) *
+                173) magnet_arm_y< 188.5 547  267 E (0.08 0.14 0.1 0.16 0.51) *
+               87) accel_forearm_x< -90.5 582  182 D (0.058 0.13 0.04 0.69 0.081) *
+         11) magnet_dumbbell_y>=438.5 1740  839 B (0.036 0.52 0.041 0.22 0.18)  
+           22) total_accel_dumbbell>=5.5 1267  436 B (0.05 0.66 0.055 0.022 0.22)  
+             44) roll_belt>=-0.58 1075  244 B (0.059 0.77 0.065 0.026 0.077) *
+             45) roll_belt< -0.58 192    0 E (0 0 0 0 1) *
+           23) total_accel_dumbbell< 5.5 473  111 D (0 0.15 0.0042 0.77 0.082) *
+      3) roll_belt>=129.5 1249   50 E (0.04 0 0 0 0.96) *
+
+
+
